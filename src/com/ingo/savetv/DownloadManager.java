@@ -8,6 +8,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.RandomAccessFile;
+import java.io.UnsupportedEncodingException;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
@@ -372,6 +373,74 @@ public class DownloadManager {
 		   return pages;
 	}
 	
+	public String getExpandedContent( String id, String name ) throws ClientProtocolException, IOException{
+		
+		String content = "";
+		
+		LOG.info("Start: Getting expanded content for show : " + name );
+		List<NameValuePair> formparams = new ArrayList<NameValuePair>();
+
+		formparams.add(new BasicNameValuePair("ajax","true"));
+		formparams.add(new BasicNameValuePair("callCount","1"));
+		formparams.add(new BasicNameValuePair("c0-scriptName","null"));
+		formparams.add(new BasicNameValuePair("c0-methodName","GetVideoEntries"));
+		formparams.add(new BasicNameValuePair("c0-id","4127_12795177172"));
+		formparams.add(new BasicNameValuePair("c0-param0","string:1"));
+		formparams.add(new BasicNameValuePair("c0-param1","string:"));
+		formparams.add(new BasicNameValuePair("c0-param2","string:1"));
+		formparams.add(new BasicNameValuePair("c0-param3","string:0"));
+		formparams.add(new BasicNameValuePair("c0-param4","string:1"));
+		formparams.add(new BasicNameValuePair("c0-param5","string:0"));
+		formparams.add(new BasicNameValuePair("c0-param6","string:1"));
+		formparams.add(new BasicNameValuePair("c0-param7","string:0"));
+		formparams.add(new BasicNameValuePair("c0-param8","string:1"));
+		formparams.add(new BasicNameValuePair("c0-param9","string:"));
+		formparams.add(new BasicNameValuePair("c0-param10","string:" + name));
+		formparams.add(new BasicNameValuePair("c0-param11","string:" + id));
+		formparams.add(new BasicNameValuePair("c0-param12","string:toggleSerial"));
+		formparams.add(new BasicNameValuePair("xml","true"));
+		formparams.add(new BasicNameValuePair("extend", "function (object) { for (property in object) { this[property] = object[property];  }  return this;}"));
+		
+		UrlEncodedFormEntity ent = new UrlEncodedFormEntity(formparams, "UTF-8");	
+		HttpPost httppost = new HttpPost("http://www.save.tv/STV/M/obj/user/usShowVideoArchiveLoadEntries.cfm?null.GetVideoEntries");
+		httppost.setEntity(ent); 
+
+		_entity = null;
+		HttpResponse response = _client.execute(httppost);
+		_entity = response.getEntity();
+		if(_entity != null){
+			BufferedReader reader = new BufferedReader(new InputStreamReader(_entity.getContent()));
+			String lineout;
+			while((lineout = reader.readLine()) != null){
+				content += lineout;
+			    LOG.debug(lineout);
+			}
+			reader.close();
+		}
+		
+		LOG.info("Expanded content for show " + name + " retrieved");
+
+		return content;
+	}
+	
+	public String expandSeries(String content){
+
+	/*
+	 * 	<a class="toggle-serial-link" href="javascript:STV.Archive.toggleSerial(1)" title="Hier klicken, um die Gruppe gleichnamiger Sendungen auf- oder zuzuklappen">Terra X</a>
+	 */
+	   LOG.debug(content);
+	   String expContent = "";
+	   Pattern MY_PATTERN = Pattern.compile("<a class=\\\"toggle-serial-link\\\"\\s+href=\\\"javascript:STV.Archive.toggleSerial\\((\\d+)\\)\\\"\\s+title=");
+	   Matcher m = MY_PATTERN.matcher(content);
+	   while(m.find()){
+		   String id = m.group(1);
+		   String name = content.substring(content.indexOf('>', m.start() + 1) + 1,content.indexOf('<', m.start() + 1)).trim();
+		   try {
+			   expContent += getExpandedContent( id, name );
+		   } catch (Exception ex){}
+	   }
+	   return expContent;
+	}
 	
 	
     /**
@@ -424,13 +493,15 @@ public class DownloadManager {
 			LOG.info("Login in to Save.tv with user " + Parameter.getUsername());
 			if(logonToSaveTV(Parameter.getUsername(), Parameter.getPassword())){
 				
-				LOG.debug("Login in to Save.tv comlete");
+				LOG.debug("Login in to Save.tv complete");
 			
 				// get the Archive of already recorded videos for the logged on user
 				LOG.debug("Retrieving list of recorded videos availiable on Save.tv for user " + Parameter.getUsername());
 				String content = executeGet("http://www.save.tv/STV/M/obj/user/usShowVideoArchive.cfm");
 				LOG.debug("Retrieving list of recordings for user " + Parameter.getUsername() + " complete");
-			
+				
+				content += expandSeries( content );
+				
 				// Instantiate the RecordingManager that locally keeps track of what recordings have been downloaded already
 				// so they do not get downloaded time and again. Compare the list that came back from save.tv with the recordings
 				// that are already downloaded and only add the ones that are new to the list of recordings to download.
